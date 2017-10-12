@@ -83,3 +83,4 @@ public class CollaborativeFiltering {
     //MatrixFactorizationModel sameModel = MatrixFactorizationModel.load(sc.sc(), "myModelPath");
   }
 }
+//http://files.grouplens.org/datasets/movielens/ml-100k.zip
