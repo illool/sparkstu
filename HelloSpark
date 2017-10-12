@@ -1,0 +1,93 @@
+package sparktest;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFunction;
+
+import scala.Tuple2;
+
+public class HelloSpark {
+	
+	public static void main(String[] args) {
+		
+		List<String> strLine=new ArrayList<String>();
+		strLine.add("how are you");
+		strLine.add("I am ok");
+		strLine.add("do you love me");
+		
+		SparkConf conf = new SparkConf().setMaster("local").setAppName("HelloSpark");
+		try (JavaSparkContext jsc = new JavaSparkContext(conf)) {
+			// do something here
+			System.out.println(jsc);
+			JavaRDD<String> text = jsc.textFile("F:\\MyStudy\\sparktest\\test.txt");
+			JavaRDD<String> input=jsc.parallelize(strLine);
+			JavaRDD<String> words=input.flatMap(
+			        new FlatMapFunction<String, String>() {
+						private static final long serialVersionUID = 1L;
+
+						public Iterator<String> call(String s) throws Exception {
+			                return Arrays.asList(s.split(" ")).iterator();
+			            }
+			        }
+			);
+			JavaRDD<String> word=text.flatMap(
+			        new FlatMapFunction<String, String>() {
+						private static final long serialVersionUID = 1L;
+						public Iterator<String> call(String s) throws Exception {
+			                return Arrays.asList(s.split("[^A-Za-z]")).iterator();
+			            }
+			        }
+			);
+			JavaRDD<String> wordss=text.filter(
+			        new Function<String, Boolean>() {
+						private static final long serialVersionUID = 1L;
+						public Boolean call(String v1)throws Exception {
+			                return v1.contains("!");
+			            }
+			        }
+			);
+			//当需要把一个普通的RDD转为pair RDD时，可以调用map()函数来实现。
+			JavaPairRDD<String,Integer> counts=word.mapToPair(
+			        new PairFunction<String, String, Integer>() {
+						private static final long serialVersionUID = 1L;
+						public Tuple2<String, Integer> call(String s) throws Exception {
+			                return new Tuple2<String, Integer>(s, 1);
+			            }
+			        }
+			);
+			JavaPairRDD <String,Integer> results=counts.reduceByKey(
+			        new Function2<Integer, Integer, Integer>() {
+						private static final long serialVersionUID = 1L;
+						public Integer call(Integer v1, Integer v2) throws Exception {
+			                return v1 + v2;
+			            }
+			        }
+			);
+			List<String> wordL = wordss.collect();
+			for (String line : wordL)
+			    System.out.println(line);
+			List<String> wordList = words.collect();
+			for (String line : wordList)
+			    System.out.println(line);
+			List<String> wordLists = word.collect();
+			for (String line : wordLists)
+			    System.out.println(line.trim());
+			List<Tuple2<String, Integer>> resultlist = results.collect();
+			for (Tuple2<String, Integer> line : resultlist) {
+				System.out.println(line._1+":"+line._2);
+			}
+			
+			System.out.println("jsc success");
+		}
+	}
+
+}
