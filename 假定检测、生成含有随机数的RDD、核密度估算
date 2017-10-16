@@ -1,0 +1,56 @@
+package sparktest;
+import java.util.Arrays;
+
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaDoubleRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.mllib.stat.KernelDensity;
+import org.apache.spark.mllib.stat.test.BinarySample;
+import org.apache.spark.mllib.stat.test.StreamingTest;
+
+public class StatisticsStreamingSignificanceTestingLearning {
+
+	public static void main(String[] args) {
+		SparkConf conf = new SparkConf().setMaster("local").setAppName("StatisticsStreamingSignificanceTestingLearning");
+		JavaSparkContext jsc = new JavaSparkContext(conf);
+		//假定检测
+		JavaRDD<Object> data = jsc.textFile("F:\\MyStudy\\ml-100k\\u.data").map(line -> {
+			  String[] ts = line.split("[^0-9]");
+			  boolean label = Boolean.parseBoolean(ts[0]);
+			  double value = Double.parseDouble(ts[1]);
+			  return new BinarySample(label, value);
+			});
+
+			StreamingTest streamingTest = new StreamingTest()
+			  .setPeacePeriod(0)
+			  .setWindowSize(0)
+			  .setTestMethod("welch");
+
+			//JavaDStream<StreamingTestResult> out = streamingTest.registerStream(data);
+			//out.print();
+			
+			// Generate a random double RDD that contains 1 million i.i.d. values drawn from the
+			// standard normal distribution `N(0, 1)`, evenly distributed in 10 partitions.
+			//生成含有随机数的RDD
+			JavaDoubleRDD u = normalJavaRDD(jsc, 1000000L, 10);
+			// Apply a transform to get a random double RDD following `N(1, 4)`.
+			JavaDoubleRDD v = u.mapToDouble(x -> 1.0 + 2.0 * x);
+			
+			
+			// an RDD of sample data
+			JavaRDD<Double> datas = jsc.parallelize(
+			  Arrays.asList(1.0, 1.0, 1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 6.0, 7.0, 8.0, 9.0, 9.0));
+
+			// Construct the density estimator with the sample data
+			// and a standard deviation for the Gaussian kernels
+			//核密度估算
+			KernelDensity kd = new KernelDensity().setSample(datas).setBandwidth(3.0);
+
+			// Find density estimates for the given values
+			double[] densities = kd.estimate(new double[]{-1.0, 2.0, 5.0});
+
+			System.out.println(Arrays.toString(densities));
+	}
+
+}
