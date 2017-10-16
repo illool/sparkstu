@@ -1,0 +1,127 @@
+package sparktest;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.Test;
+
+/**
+ * @description 这是一个用来让你更加熟悉parallelStream的原理的实力
+ * @date 2016年10月11日18:26:55
+ * @version v1.0
+ * @author wangguangdong 
+ */
+public class ParallelStreams {
+	
+	int max = 1000_000;  
+    List<String> values;  
+      
+    public ParallelStreams(){  
+        //创建一个包含唯一元素的大容器：         
+        values = new ArrayList<String>();  
+        for(int i=max; i>0; i--){  
+            UUID uuid = UUID.randomUUID();  
+            values.add(uuid.toString());              
+        }  
+    }  
+    //测试排序这些元素需要多长时间。  
+      
+    //Sequential Sort, 采用顺序流进行排序  
+    @Test  
+    public void sequentialSort(){     
+        long t0 = System.nanoTime();  
+          
+        long count = values.stream().sorted().count();  
+        System.err.println("count = " + count);  
+          
+        long t1 = System.nanoTime();  
+          
+        long millis  = TimeUnit.NANOSECONDS.toMillis(t1 - t0);  
+        System.out.println(String.format("sequential sort took: %d ms", millis));    
+        //sequential sort took: 1932 ms  
+          
+    }  
+      
+    //parallel Sort, 采用并行流进行排序  
+    @Test  
+    public void parallelSort(){   
+        long t0 = System.nanoTime();  
+          
+        long count = values.parallelStream().sorted().count();  
+        System.err.println("count = " + count);  
+          
+        long t1 = System.nanoTime();  
+          
+        long millis  = TimeUnit.NANOSECONDS.toMillis(t1 - t0);  
+        System.out.println(String.format("parallel sort took: %d ms", millis));    
+        //parallel sort took: 1373 ms 并行排序所花费的时间大约是顺序排序的一半。  
+    }  
+	
+    public static void main(String[] args) throws Exception {
+    	
+    	ParallelStreams p = new ParallelStreams();
+    	p.sequentialSort();
+    	p.parallelSort();
+    	    	
+        System.out.println("Hello World!");
+        // 构造一个10000个元素的集合
+        List<Integer> list = new ArrayList<>();
+        for (int i = 0; i < 10000; i++) {
+            list.add(i);
+        }
+        // 统计并行执行list的线程
+        Set<Thread> threadSet = new CopyOnWriteArraySet<>();
+        // 并行执行
+        list.parallelStream().forEach(integer -> {
+            Thread thread = Thread.currentThread();
+            // System.out.println(thread);
+            // 统计并行执行list的线程
+            threadSet.add(thread);
+        });
+        System.out.println("threadSet一共有" + threadSet.size() + "个线程");
+        System.out.println("系统一个有"+Runtime.getRuntime().availableProcessors()+"个cpu");
+        List<Integer> list1 = new ArrayList<>();
+        List<Integer> list2 = new ArrayList<>();
+        for (int i = 0; i < 100000; i++) {
+            list1.add(i);
+            list2.add(i);
+        }
+        Set<Thread> threadSetTwo = new CopyOnWriteArraySet<>();
+        CountDownLatch countDownLatch = new CountDownLatch(2);
+        Thread threadA = new Thread(() -> {
+            list1.parallelStream().forEach(integer -> {
+                Thread thread = Thread.currentThread();
+                // System.out.println("list1" + thread);
+                threadSetTwo.add(thread);
+            });
+            countDownLatch.countDown();
+        });
+        Thread threadB = new Thread(() -> {
+            list2.parallelStream().forEach(integer -> {
+                Thread thread = Thread.currentThread();
+                // System.out.println("list2" + thread);
+                threadSetTwo.add(thread);
+            });
+            countDownLatch.countDown();
+        });
+
+        threadA.start();
+        threadB.start();
+        countDownLatch.await();
+        System.out.print("threadSetTwo一共有" + threadSetTwo.size() + "个线程");
+
+        System.out.println("---------------------------");
+        System.out.println(threadSet);
+        System.out.println(threadSetTwo);
+        System.out.println("---------------------------");
+        threadSetTwo.addAll(threadSet);
+        System.out.println(threadSetTwo);
+        System.out.println("threadSetTwo一共有" + threadSetTwo.size() + "个线程");
+        System.out.println("系统一个有"+Runtime.getRuntime().availableProcessors()+"个cpu");
+    }
+}
