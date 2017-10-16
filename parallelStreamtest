@@ -1,0 +1,52 @@
+package sparktest;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Stream;
+
+public class parallelStreamtest {
+
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+		List<Integer> numbers = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9);
+		for (int i = 0; i < 1; i++) {
+			// numbers.parallelStream().forEach(System.out::print);//对于每一个item调用什么方法，有点像函数指针的意思
+			numbers.parallelStream().forEachOrdered(System.out::print); // 这个方法顺序就对了
+			System.out.println();
+		}
+
+		List<Integer> nums = Arrays.asList(1, 2, null, 4, 5, 6, null, 8, 9,1,9,8,7,6);
+		nums.parallelStream().forEachOrdered(System.out::print); // 这个方法顺序就对了
+		// stream()，把一个Collection对象转换成Stream
+		long ln = nums.stream().filter(num -> num != null).count();
+		System.out.println(ln);
+		//
+		Stream<Integer> integerStream = Stream.of(1, 2, 3, 5);
+		integerStream.forEach(System.out::print);
+		Stream<String> stringStream = Stream.of("taobao");
+		stringStream.forEach(System.out::print);
+		// 生成无限长的Stream
+		// 生成一个无限长度的Stream，其元素的生成是通过给定的Supplier（这个接口可以看成一个对象的工厂，每次调用返回一个给定类型的对象）
+		Stream<Double> dstream = Stream.generate(() -> Math.random());
+		dstream.limit(4).forEach(System.out::print);
+		Stream<Double> rstream = Stream.generate(Math::random);
+		rstream.limit(4).forEach(System.out::print);
+		// 这段代码就是先获取一个无限长度的正整数集合的Stream，然后取出前10个打印。千万记住使用limit方法，不然会无限打印下去。
+		Stream.iterate(1, item -> item + 1).limit(10).forEach(System.out::print);
+
+		System.out.println("sum is:" + nums.stream().filter(num -> num != null).distinct().mapToInt(num -> num * 2)
+				.peek(System.out::println).skip(2).limit(4).sum());
+
+		List<Integer> numsWithoutNull = nums.stream().filter(num -> num != null).collect(() -> new ArrayList<Integer>(),
+				(list, item) -> list.add(item), (list1, list2) -> list1.addAll(list2));
+		numsWithoutNull.stream().forEach(System.out::print);
+		
+		System.out.println(numbers.stream().allMatch(item -> item < 100));
+		numbers.stream().max((o1, o2) -> o1.compareTo(o2)).ifPresent(System.out::println);
+		
+		//Collections.sort();
+	}
+
+}
