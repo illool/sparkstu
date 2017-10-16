@@ -1,0 +1,49 @@
+package sparktest;
+
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+
+import com.google.common.collect.ImmutableMap;
+
+import scala.Tuple2;
+
+public class StatisticsStratifiedsamplingLearning {
+	// 分层取样
+	// sampleByKey/sampleByKeyExact分层取样
+	// sampleByKey 和 sampleByKeyExact 的区别在于 sampleByKey 并不对过滤全量数据，因此只得到近似值，而 sampleByKeyExtra 会对全量数据做采样计算，因此耗费大量的计算资源，但是结果会更准确。
+	public static void main(String[] args) {
+		SparkConf conf = new SparkConf().setMaster("local").setAppName("StatisticsStratifiedsamplingLearning");
+		JavaSparkContext jsc = new JavaSparkContext(conf);
+
+		List<Tuple2<Integer, Character>> list = Arrays.asList(
+				new Tuple2<>(1, 'a'), 
+				new Tuple2<>(1, 'b'),
+				new Tuple2<>(2, 'c'), 
+				new Tuple2<>(2, 'd'), 
+				new Tuple2<>(2, 'e'), 
+				new Tuple2<>(3, 'f'));
+
+		JavaPairRDD<Integer, Character> data = jsc.parallelizePairs(list);
+
+		// specify the exact fraction desired from each key Map<K, Double>
+		ImmutableMap<Integer, Double> fractions = ImmutableMap.of(1, 0.1, 2, 0.6, 3, 0.3);//0.1+0.6+0.3=1
+
+		// Get an approximate sample from each stratum
+		JavaPairRDD<Integer, Character> approxSample = data.sampleByKey(false, fractions);
+		List<Tuple2<Integer, Character>> approxSamplelist = approxSample.collect();
+		for (Tuple2<Integer, Character> line : approxSamplelist) {
+			System.out.println(line._1+":"+line._2);
+		}
+		// Get an exact sample from each stratum
+		JavaPairRDD<Integer, Character> exactSample = data.sampleByKeyExact(false, fractions);
+		List<Tuple2<Integer, Character>> exactSamplelist = exactSample.collect();
+		for (Tuple2<Integer, Character> line : exactSamplelist) {
+			System.out.println(line._1+":"+line._2);
+		}
+	}
+
+}
