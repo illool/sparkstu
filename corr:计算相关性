@@ -12,6 +12,7 @@ import org.apache.spark.mllib.stat.Statistics;
 public class StatisticsCorrelationsLearning {
 
 	// corr:计算相关性
+	//Pearson 用来计算定距变量，相关系数的绝对值越大，相关性越强：相关系数越接近于1或-1，相关度越强，相关系数越接近于0，相关度越弱。
 	public static void main(String[] args) {
 		SparkConf conf = new SparkConf().setMaster("local").setAppName("StatisticsCorrelationsLearning");
 		JavaSparkContext jsc = new JavaSparkContext(conf);
