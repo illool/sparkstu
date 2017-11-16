@@ -1,0 +1,12 @@
+spark on yarn 的支持两种模式
+1）yarn-cluster：适用于生产环境；
+2）yarn-client：适用于交互、调试，希望立即看到app的输出
+Yarn-cluster和yarn-client的区别在于appMaster：yarn appMaster，每个yarn app实例有一个appMaster进程，是为app启动的第一个container；负责从ResourceManager请求资源，获取到资源后，告诉NodeManager为其启动container；appMaster消除了active client的需要，app client启动app后可以结束，协调由运行在cluster上被yarn管理的进程继续
+
+Yarn-cluster mode
+Spark的dirver 运行在 appMaster中，appMaster进程同时负责driving app，请求资源；
+启动spark app的client不需要一直存在于整个spark app运行生命周期
+
+yarn-client mode
+某些情况需要与spark交互，要求user input，如spark-shell和pyspark，这样的spark app需要spark-driver运行在初始化spark app的client端进程中
+这种情况，appMaster仅仅用于从yarn集群请求executor，app client会和请求的container通信来调度他们工作
