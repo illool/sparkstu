@@ -1,0 +1,78 @@
+先看看官方包中的一部分源码：
+
+/**
+    官方提供源码包中解析Redis配置需要的字段
+*/
+case class RedisEndpoint(val host: String = Protocol.DEFAULT_HOST,
+                         val port: Int = Protocol.DEFAULT_PORT,
+                         val auth: String = null,
+                         val dbNum: Int = Protocol.DEFAULT_DATABASE,
+                         val timeout: Int = Protocol.DEFAULT_TIMEOUT)
+  extends Serializable {
+
+/**
+    源码中获取配置的字段名及来源，可以看出是从SparkConf中读取到相应字段，所以连接redis只需在SparkConf中set相应字段即可
+*/
+  def this(conf: SparkConf) {
+      this(
+        conf.get("redis.host", Protocol.DEFAULT_HOST),
+        conf.getInt("redis.port", Protocol.DEFAULT_PORT),
+        conf.get("redis.auth", null),
+        conf.getInt("redis.db", Protocol.DEFAULT_DATABASE),
+        conf.getInt("redis.timeout", Protocol.DEFAULT_TIMEOUT)
+      )
+  }
+
+  ···
+}
+
+def fromRedisKV[T](keysOrKeyPattern: T,
+                     partitionNum: Int = 3)
+                    (implicit redisConfig: RedisConfig = new RedisConfig(new RedisEndpoint(sc.getConf))):
+  RDD[(String, String)] = {
+    keysOrKeyPattern match {
+      case keyPattern: String => fromRedisKeyPattern(keyPattern, partitionNum)(redisConfig).getKV
+      case keys: Array[String] => fromRedisKeys(keys, partitionNum)(redisConfig).getKV
+      case _ => throw new scala.Exception("KeysOrKeyPattern should be String or Array[String]")
+    }
+  }
+
+先看传入的参数：
+
+    泛型类型keysOrKeyPattern
+    从的模式匹配代码中可以看出，这里的T可是是两种类型，一个是String，另一个是Array[String],如果传入其他类型则会抛出运行时异常，其中String类型的意思是匹配键，这里可以用通配符比如foo*，所以返回值是一个结果集RDD[(String, String)]，当参数类型为Array[String]时是指传入key的数组，返回的结果则为相应的的结果集，RDD的内容类型也是KV形式。
+    Int类型partitionNum
+    生成RDD的分区数，默认为3，如果传入的第一个参数类型是Array[String]，这个参数可以这样设置，先预估一下返回结果集的大小，使用keyArr.length / num + 1，这样则保证分区的合理性，以防发生数据倾斜。若第一个参数类型为String，能预估尽量预估，如果实在没办法，比如确实在这里发生了数据倾斜，可以尝试考虑使用sc.fromRedisKeys()返回key的集合，提前把握返回结果集的大小，或者根据集群机器数量，把握分区数。
+    柯里化形式隐式参数redisConfig
+    由于我们之前在sparkConf里面set了相应的参数，这里不传入这个参数即可。如要调整，则可以按照源码中的方式传入，其中RedisEndpoint是一个case class类，而且很多参数都有默认值（比如6379的端口号），所以自己建立一个RedisEndpoint也是非常方便的。
+
+def toRedisKV(kvs: RDD[(String, String)], ttl: Int = 0)
+               (implicit redisConfig: RedisConfig = new RedisConfig(new RedisEndpoint(sc.getConf))) {
+    kvs.foreachPartition(partition => setKVs(partition, ttl, redisConfig))
+  }
+
+读取完整代码：
+import org.apache.spark.{SparkConf, SparkContext}
+import com.redislabs.provider.redis._
+
+object SparkRedis extends App {
+  val conf = new SparkConf().setMaster("yarn-cluster").setAppName("sparkRedisTest")
+  conf.set("redis.host", "10.1.11.70")
+  val sc = new SparkContext(conf)
+  val keys = Array[String]("high", "abc", "together")
+  sc.fromRedisKV(keys).coalesce(1).saveAsTextFile("hdfs://nameservice1/spark/test/redisResult2")
+}
+写入完整代码：
+import org.apache.spark.{SparkConf, SparkContext}
+import com.redislabs.provider.redis._
+import org.apache.spark.rdd.RDD
+
+object SparkRedis extends App {
+  val conf = new SparkConf().setMaster("yarn-cluster").setAppName("sparkRedisTest")
+  conf.set("redis.host", "10.1.11.70")
+  val sc = new SparkContext(conf)
+  val data = Seq[(String,String)](("high","111"), ("abc","222"), ("together","333"))
+  val redisData:RDD[(String,String)] = sc.parallelize(data)
+  sc.toRedisKV(redisData)
+}
+
