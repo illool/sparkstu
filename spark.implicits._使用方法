@@ -1,0 +1,12 @@
+val sparkSession = SparkSession.builder().appName("l4sumKNN").enableHiveSupport().getOrCreate()
+
+import sparkSession.implicits._
+  val dataList: List[(Double, String, Double, Double, String, Double, Double, Double, Double)] = List(
+    (0, "male", 37, 10, "no", 3, 18, 7, 4),
+    (0, "female", 27, 4, "no", 4, 14, 6, 4),
+    (0, "female", 32, 15, "yes", 1, 12, 1, 4),
+    (0, "male", 57, 15, "yes", 5, 18, 6, 5),
+    (0, "male", 22, 0.75, "no", 2, 17, 6, 3),
+    (0, "female", 32, 1.5, "no", 2, 17, 5, 5))
+
+  val data = dataList.toDF("affairs", "gender", "age", "yearsmarried", "children", "religiousness", "education", "occupation", "rating")
