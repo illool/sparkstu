@@ -1,14 +1,19 @@
+import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.clustering.KMeans
+import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.linalg.{Vector, Vectors}
+
 import scala.collection.mutable.ListBuffer
 import org.apache.spark.ml.linalg.SQLDataTypes.VectorType
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
-import scala.collection.mutable.ArrayBuffer;
+
+import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.ml.regression.LinearRegression
+import org.apache.spark.ml.tuning.{ParamGridBuilder, TrainValidationSplit}
 
 object CAofG {
   def main(args: Array[String]): Unit = {
@@ -46,14 +51,31 @@ object CAofG {
     val temp = CAofGDF.select("GDS_ID","GDS_NM","sum_TOT_QTY","sum_PV_QTY","in_CART","in_CLCT","G_RAT").sort($"sum_TOT_QTY".desc, $"sum_PV_QTY".desc).limit(5000).toDF()
     //temp.show(100)
 
-    val colArray = Array("sum_TOT_QTY", "sum_PV_QTY", "in_CART", "in_CLCT", "G_RAT")
+    val colArray = Array("sum_PV_QTY", "in_CART", "in_CLCT", "G_RAT")
     val assembler = new VectorAssembler().setInputCols(colArray).setOutputCol("features")
     println(assembler.inputCols.name,assembler.outputCol.name)
     val vecDF = assembler.transform(temp)
+
     vecDF.show()
+
+    val Array(trainingDF, testDF) = vecDF.randomSplit(Array(0.9, 0.1), seed = 12345)
+    val lr = new LinearRegression().setFeaturesCol("features").setLabelCol("sum_TOT_QTY").fit(trainingDF)
+    val pipeline = new Pipeline().setStages(Array(lr))
+    val paramGrid = new ParamGridBuilder().addGrid(lr.fitIntercept).addGrid(lr.elasticNetParam, Array(0.0, 0.5, 1.0)).addGrid(lr.maxIter, Array(10, 100)).build()
+    val RegEvaluator = new RegressionEvaluator().setLabelCol(lr.getLabelCol).setPredictionCol(lr.getPredictionCol).setMetricName("rmse")
+    val trainValidationSplit = new TrainValidationSplit().setEstimator(pipeline).setEvaluator(RegEvaluator).setEstimatorParamMaps(paramGrid).setTrainRatio(0.8)
+    val tvModel = trainValidationSplit.fit(trainingDF)
+    tvModel.extractParamMap()
+    tvModel.getEstimatorParamMaps.length
+    tvModel.getEstimatorParamMaps.foreach { println } // 参数组合的集合
+    tvModel.getEvaluator.extractParamMap() // 评估的参数
+    tvModel.getEvaluator.isLargerBetter // 评估的度量值是大的好，还是小的好
+    tvModel.getTrainRatio
+    tvModel.transform(testDF).select("features", "Murder", "prediction").show()
+
     /*
     val lr1 = new LinearRegression()
-    val lr2 = lr1.setFeaturesCol("features").setLabelCol("Murder").setFitIntercept(true)
+    val lr2 = lr1.setFeaturesCol("features").setLabelCol("sum_TOT_QTY").setFitIntercept(true)
     val lr3 = lr2.setMaxIter(10).setRegParam(0.3).setElasticNetParam(0.8)
     val lr = lr3
     val lrModel = lr.fit(vecDF)
@@ -62,7 +84,7 @@ object CAofG {
     println(s"Coefficients: ${lrModel.coefficients} Intercept: ${lrModel.intercept}")
 
     val predictions = lrModel.transform(vecDF)
-    predictions.selectExpr("Murder", "round(prediction,1) as prediction").show
+    predictions.selectExpr("sum_TOT_QTY", "round(prediction,1) as prediction").show
 
     val trainingSummary = lrModel.summary
     println(s"numIterations: ${trainingSummary.totalIterations}")
