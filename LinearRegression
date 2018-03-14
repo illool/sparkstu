@@ -1,0 +1,106 @@
+import org.apache.spark.ml.clustering.KMeans
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.linalg.{Vector, Vectors}
+import scala.collection.mutable.ListBuffer
+import org.apache.spark.ml.linalg.SQLDataTypes.VectorType
+import org.apache.spark.ml.param.ParamMap
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.types.{StringType, StructField, StructType}
+import scala.collection.mutable.ArrayBuffer;
+import org.apache.spark.ml.regression.LinearRegression
+
+object CAofG {
+  def main(args: Array[String]): Unit = {
+    val sparkSession = SparkSession.builder().appName("CAofG").enableHiveSupport().getOrCreate()
+    sparkSession.sql("use sopdm")
+
+    val QString = "select  " +
+      "a.GDS_ID as GDS_ID,e.GDS_NM as GDS_NM,nvl(a.sum_TOT_QTY,0) as sum_TOT_QTY, " +
+      "a.CHNL_CD,nvl(b.sum_PV_QTY,0) as sum_PV_QTY,nvl(c.in_CART,0) as in_CART, " +
+      "nvl(d.in_CLCT,0) as in_CLCT,nvl(f.G_RAT,1) as G_RAT  " +
+      "from  " +
+      "(select GDS_ID,sum(TOT_QTY) as sum_TOT_QTY,CHNL_CD from SOPDM.TDM_ML_OR_ORDER_D where statis_date ='20171111' and regexp_replace(substr(pay_time,1,10),'-','')=statis_date and CHNL_CD='50' group by GDS_ID,CHNL_CD) a " +
+      "left join  " +
+      "(select GDS_ID,sum(PV_QTY) as sum_PV_QTY from SOPDM.TDM_ML_BR_CUST_VISIT_D where statis_date >='20171101' and statis_date <='20171110' and nvl(GDS_ID,'-')!='-' group by GDS_ID) b " +
+      "on a.GDS_ID = b.GDS_ID " +
+      "left join  " +
+      "(select GDS_ID,count(GDS_ID) as in_CART from SOPDM.TDM_ML_MEM_CART1_INCR_D where statis_date >='20171101' and statis_date <='20171110'group by GDS_ID) c " +
+      "on a.GDS_ID = c.GDS_ID " +
+      "left join " +
+      "(select GDS_ID,count(GDS_ID) as in_CLCT from SOPDM.TDM_ML_CA_GDS_CLCT_D where statis_date >='20171101' and statis_date <='20171110'group by GDS_ID) d " +
+      "on a.GDS_ID = d.GDS_ID " +
+      "left join " +
+      "(select GDS_CD,GDS_NM from SOPDM.TDM_ML_PUB_GDS_TD) e " +
+      "on a.GDS_ID = e.GDS_CD " +
+      "left join " +
+      "(select a1.GDS_CD as GDS_CD,(a1.G_GDS_EVAL_PNT/a1.GDS_EVAL_PNT) as G_RAT from  " +
+      "(select GDS_CD,count(GDS_EVAL_PNT) as GDS_EVAL_PNT,sum(case when GDS_EVAL_PNT>=4 then 1 else 0 end) as G_GDS_EVAL_PNT from BI_SOR.TSOR_SVC_GDS_EVAL_D_IST group by GDS_CD) a1 " +
+      ") f " +
+      "on a.GDS_ID = f.GDS_CD"
+    val CAofGDF = sparkSession.sql(QString)
+    //val caofgDF = CAofGDF.select("sum_TOT_QTY","sum_PV_QTY","in_CART","in_CLCT","G_RAT")
+    //caofgDF.show()
+    //val temp = CAofGDF.orderBy("sum_TOT_QTY","sum_PV_QTY").limit(1000)
+    import sparkSession.implicits._
+    val temp = CAofGDF.select("GDS_ID","GDS_NM","sum_TOT_QTY","sum_PV_QTY","in_CART","in_CLCT","G_RAT").sort($"sum_TOT_QTY".desc, $"sum_PV_QTY".desc).limit(5000).toDF()
+    //temp.show(100)
+
+    val colArray = Array("sum_TOT_QTY", "sum_PV_QTY", "in_CART", "in_CLCT", "G_RAT")
+    val assembler = new VectorAssembler().setInputCols(colArray).setOutputCol("features")
+    println(assembler.inputCols.name,assembler.outputCol.name)
+    val vecDF = assembler.transform(temp)
+    vecDF.show()
+    /*
+    val lr1 = new LinearRegression()
+    val lr2 = lr1.setFeaturesCol("features").setLabelCol("Murder").setFitIntercept(true)
+    val lr3 = lr2.setMaxIter(10).setRegParam(0.3).setElasticNetParam(0.8)
+    val lr = lr3
+    val lrModel = lr.fit(vecDF)
+
+    lrModel.extractParamMap()
+    println(s"Coefficients: ${lrModel.coefficients} Intercept: ${lrModel.intercept}")
+
+    val predictions = lrModel.transform(vecDF)
+    predictions.selectExpr("Murder", "round(prediction,1) as prediction").show
+
+    val trainingSummary = lrModel.summary
+    println(s"numIterations: ${trainingSummary.totalIterations}")
+    println(s"objectiveHistory: ${trainingSummary.objectiveHistory.toList}")
+    trainingSummary.residuals.show()
+    println(s"RMSE: ${trainingSummary.rootMeanSquaredError}")
+    println(s"r2: ${trainingSummary.r2}")
+    */
+    /*
+    val arr = Array[String]("caofgDF")
+    val schema = StructType(arr.map(fieldName => StructField(fieldName, VectorType, false)))
+    println(schema.treeString)
+    val rowRDD = caofgDF.rdd.map(item => Row(Vectors.dense(item.get(0).toString.toDouble,item.get(1).toString.toDouble,item.get(2).toString.toDouble,item.get(3).toString.toDouble,item.get(4).toString.toDouble)))
+    val resDataFrame = sparkSession.createDataFrame(rowRDD, schema)
+    resDataFrame.show()
+    val kmeans = new KMeans().setK(3).setFeaturesCol("caofgDF").setPredictionCol("prediction").setMaxIter(100).setTol(0.5)
+    val model = kmeans.fit(resDataFrame)
+    model.clusterCenters.foreach(center => {print("Clustering Center:"+center)})
+    */
+    /*
+    var str = ""
+    //val reslist = new ListBuffer[String]()
+    val test = for (i <- 2 to 30) yield {
+      val kmeans = new KMeans().setK(i).setFeaturesCol("caofgDF").setPredictionCol("prediction").setMaxIter(100).setTol(0.5)
+      val model = kmeans.fit(resDataFrame)
+      //val predictions = model.transform(resDataFrame)
+      //predictions.collect().take(10).foreach(row => {
+      //print( row(0) + " is predicted as cluster " + row(1))})
+      //model.clusterCenters.foreach(center => {print("Clustering Center:"+center)})
+      val err = model.computeCost(resDataFrame)
+      //var resmap = Map(i -> err)
+      str = i + ":" + err
+      //reslist.append(str)
+      str
+    }
+    test.foreach(println)
+    */
+
+
+  }
+}
