@@ -1,0 +1,138 @@
+本篇紧接上一篇官方实例
+http://blog.csdn.net/dahunbi/article/details/72821915
+官方实例有个缺点，用于训练的数据直接就load进来了，不做任何处理，有些投机取巧。
+
+    // Load and parse the data file.
+    val data = MLUtils.loadLibSVMFile(sc, "data/mllib/sample_libsvm_data.txt")
+
+    1
+    2
+
+实践中，我们的spark都是架构在hadoop系统上的，表都是存放在HDFS上，那么正常的提取方式是用hiveSQL，要调用HiveContext。
+上一篇提到过，有两个machine learning的库，一个是ML，一个是MLlib
+ML的实例，用到pipeline：
+
+import java.io.{ObjectInputStream, ObjectOutputStream}
+
+import org.apache.spark.ml.util.MLWritable
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FSDataInputStream, Path, FileSystem}
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.classification.{RandomForestClassificationModel, RandomForestClassifier}
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
+import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
+
+
+    val hc = new HiveContext(sc)
+    import hc.implicits._
+    // 调用HiveContext
+
+    // 取样本，样本的第一列为label（0或者1），其他列可能是姓名，手机号，以及真正要参与训练的特征columns
+    val data = hc.sql(s"""select  *  from database1.traindata_userprofile""".stripMargin)
+    //提取schema，也就是表的column name，drop（2）删掉1,2列，只保留特征列
+
+    val schema = data.schema.map(f=>s"${f.name}").drop(2)
+
+    //ML的VectorAssembler是一个transformer,要求数据类型不能是string，将多列数据转化为单列的向量列，比如把age、income等等字段列合并成一个 userFea 向量列，方便后续训练
+    val assembler = new VectorAssembler().setInputCols(schema.toArray).setOutputCol("userFea")
+    val userProfile = assembler.transform(data.na.fill(-1e9)).select("label","userFea")
+    val data_train = userProfile.na.fill(-1e9)
+    // 取训练样本
+    val labelIndexer = new StringIndexer().setInputCol("label").setOutputCol("indexedLabel").fit(userProfile)
+    val featureIndexer = new VectorIndexer().setInputCol("userFea").setOutputCol("indexedFeatures").setMaxCategories(4).fit(userProfile)
+
+    // Split the data into training and test sets (30% held out for testing).
+    val Array(trainingData, testData) = userProfile.randomSplit(Array(0.7, 0.3))
+    // Train a RandomForest model.
+    val rf = new RandomForestClassifier().setLabelCol("indexedLabel").setFeaturesCol("indexedFeatures")
+    rf.setMaxBins(32).setMaxDepth(6).setNumTrees(90).setMinInstancesPerNode(4).setImpurity("gini")
+    // Convert indexed labels back to original labels.
+    val labelConverter = new IndexToString().setInputCol("prediction").setOutputCol("predictedLabel").setLabels(labelIndexer.labels)
+
+    val pipeline = new Pipeline().setStages(Array(labelIndexer, featureIndexer, rf, labelConverter))
+
+    // Train model. This also runs the indexers.
+    val model = pipeline.fit(trainingData)
+    println("training finished!!!!")
+    // Make predictions.
+    val predictions = model.transform(testData)
+
+    // Select example rows to display.
+    predictions.select("predictedLabel", "indexedLabel", "indexedFeatures").show(5)
+
+    val evaluator = new MulticlassClassificationEvaluator().setLabelCol("indexedLabel").setPredictionCol("prediction").setMetricName("accuracy")
+    val accuracy = evaluator.evaluate(predictions)
+    println("Test Error = " + (1.0 - accuracy))
+}
+
+
+MLlib的例子，基于RDD，请注意从ML的vector转换成MLlib的vector的过程
+
+import java.io.{ObjectInputStream, ObjectOutputStream}
+
+
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FSDataInputStream, Path, FileSystem}
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.mllib.linalg.{Vector, Vectors}
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.mllib.tree.model.RandomForestModel
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.{SparkConf, SparkContext}
+//import org.apache.spark.ml.linalg.Vector
+import org.apache.spark.mllib.util.MLUtils
+
+  var modelRF: RandomForestModel = null
+
+  val hc = new HiveContext(sc)
+  import hc.implicits._
+  // 广告画像构建完毕
+
+  // 取样本，样本的第一列为label（0或者1），其他列可能是姓名，手机号，以及真正要参与训练的特征columns
+  val data = hc.sql(s"""select  *  from database1.traindata_userprofile""".stripMargin)
+  ////提取schema，也就是表的column name，drop（2）删掉1,2列，只保留特征列
+  val schema = data.schema.map(f=>s"${f.name}").drop(1)
+  //ML的VectorAssembler是一个transformer,要求数据类型不能是string，将多列数据转化为单列的向量列，比如把age、income等等字段列合并成一个 userFea 向量列，方便后续训练
+  val assembler = new VectorAssembler().setInputCols(schema.toArray).setOutputCol("userFea")
+  val data2 = data.na.fill(-1e9)
+  val userProfile = assembler.transform(data2).select("label","userFea")
+
+  //重点在这：用ML的VectorAssembler构建的vector，必须要有这个格式的转换，从ML的vector转成 MLlib的vector，才能给MLlib里面的分类器使用(这两种vector还真是个坑，要注意)
+  val userProfile2 = MLUtils.convertVectorColumnsFromML(userProfile, "userFea")
+  // 取训练样本
+  val rdd_Data : RDD[LabeledPoint]= userProfile2.rdd.map {
+    x => val label = x.getAs[Double]("label")
+      val userFea = x.getAs[Vector]("userFea")
+      LabeledPoint(label,userFea)
+  }
+  // 构建好了训练数据就可以进行训练了， RF的参数如下
+  val impurity = "gini"
+  val featureSubsetStrategy = "auto"
+  // Let The Algorithm Choose
+  val categoricalFeaturesInfo = Map[Int, Int]()
+  val iteration = 50
+  val maxDepth = 9
+  val numClasses = 2
+  val maxBins = 32
+  val numTrees = 70
+  modelRF = RandomForest.trainClassifier(rdd_Data, numClasses, categoricalFeaturesInfo,
+    numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins)
+  println("training finished!!!!")
+  // Evaluate model on test instances and compute test error
+  val labelAndPreds = userProfile2.rdd.map { x=>
+    val label = x.getAs[Double]("label")
+    val userFea = x.getAs[Vector]("userFea")
+    val prediction = modelRF.predict(userFea)
+    (label, prediction)
+  }
+  labelAndPreds.take(10).foreach(println)
+  modelRF.save(sc, "/home/user/victorhuang/RFCModel_mllib")
+  spark.stop()
