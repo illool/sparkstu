@@ -1,1 +1,3 @@
-desc formatted tablename
+desc formatted tablename     ----->可显示表的存储位置
+show functions      ----->查看所有的hive函数
+desc tablesname ------>查看table的表结构
