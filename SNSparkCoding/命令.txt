@@ -1,0 +1,13 @@
+desc formatted tablename
+source change_spark_version spark-2.1.0
+spark-submit --class JdbcDbAccess gfjsprak-1.0-SNAPSHOT.jar
+mvn assembly:assembly
+spark-submit --master yarn-client --class WordSp gfjsprak-1.0-SNAPSHOT.jar --jars jieba-analysis-1.0.2.jar
+--master yarn-cluster --executor-memory 4G --driver-memory 4G
+spark-submit --master yarn-cluster --executor-memory 10G --driver-memory 10G --class SopdmW2V gfjsprak-1.0-SNAPSHOT-jar-with-dependencies.jar
+spark-submit --master local[4] --conf spark.kryoserializer.buffer.max=128M --conf spark.driver.maxResultSize=10g --executor-memory 10G --driver-memory 10G --class ResembleTest gfjsprak-1.0-SNAPSHOT-jar-with-dependencies.jar
+
+SET hive.exec.compress.output=false;
+INSERT OVERWRITE LOCAL DIRECTORY '/data/sopdm/workspace/hadoop-rpc/script/sopdm/test' row format delimited fields terminated by '\t' select xxx from xxx where xxx;
+
+jupyter notebook --notebook-dir= F:\1.0.0
